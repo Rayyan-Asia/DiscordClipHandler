@@ -3,27 +3,27 @@ import time
 import smtplib
 import moviepy as mp
 import requests
+from dotenv import load_dotenv
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 
-# 🔹 Discord Webhook URL (Replace with your actual webhook)
-DISCORD_WEBHOOK_URL = "https://discord.com/api/webhooks/YOUR_WEBHOOK_ID/YOUR_WEBHOOK_TOKEN"
+# Load environment variables from .env
+load_dotenv()
 
-# 🔹 Folder where video clips are saved
-CLIPS_FOLDER = "C:/path/to/clips"
+# 🔹 Load configurations from .env
+DISCORD_WEBHOOK_URL = os.getenv("DISCORD_WEBHOOK_URL")
+CLIPS_FOLDER = os.getenv("CLIPS_FOLDER")
+EMAIL_SENDER = os.getenv("EMAIL_SENDER")
+EMAIL_PASSWORD = os.getenv("EMAIL_PASSWORD")
+EMAIL_RECEIVER = os.getenv("EMAIL_RECEIVER")
+SMTP_SERVER = os.getenv("SMTP_SERVER", "smtp.gmail.com")
+SMTP_PORT = int(os.getenv("SMTP_PORT", 587))
 
 # 🔹 Maximum allowed file size for Discord (25MB)
 MAX_SIZE_MB = 25
 MAX_SIZE_BYTES = MAX_SIZE_MB * 1024 * 1024
-
-# 🔹 Email configuration (Use an app password, not your real password!)
-SMTP_SERVER = "smtp.gmail.com"  # Change for other providers
-SMTP_PORT = 587
-EMAIL_SENDER = "your_email@gmail.com"
-EMAIL_PASSWORD = "your_app_password"
-EMAIL_RECEIVER = "your_email@gmail.com"
 
 
 class VideoHandler(FileSystemEventHandler):
