@@ -36,28 +36,32 @@ class VideoHandler(FileSystemEventHandler):
         file_path = event.src_path
         if file_path.endswith((".mp4", ".mov", ".avi")):
             print(f"📂 New video detected: {file_path}")
-            compressed_path = compress_video(file_path)
+            try:
+                compressed_path = compress_video(file_path)
 
-            if compressed_path:
-                file_size = os.path.getsize(compressed_path)
+                if compressed_path:
+                    file_size = os.path.getsize(compressed_path)
 
-                if file_size <= MAX_SIZE_BYTES:
-                    upload_to_discord(compressed_path)
-                else:
-                    print(f"🚨 {compressed_path} is still too big! Sending email alert...")
-                    send_email_alert(compressed_path)
+                    if file_size <= MAX_SIZE_BYTES:
+                        upload_to_discord(compressed_path)
+                    else:
+                        print(f"🚨 {compressed_path} is still too big! Sending email alert...")
+                        send_email_alert(f"{compressed_path} is still too large to upload.")
+            except Exception as e:
+                print(f"❌ Error during video processing: {e}")
+                send_email_alert(f"Error processing video {file_path}: {str(e)}")
 
 
 def compress_video(input_path):
     """Compress video to fit under 25MB."""
     output_path = os.path.join(CLIPS_FOLDER, f"compressed_{os.path.basename(input_path)}")
 
-    clip = mp.VideoFileClip(input_path)
-
-    # 🔹 Lower bitrate for higher compression
-    target_bitrate = "400k"  # Lower = smaller file size
-
     try:
+        clip = mp.VideoFileClip(input_path)
+
+        # 🔹 Lower bitrate for higher compression
+        target_bitrate = "400k"  # Lower = smaller file size
+
         clip.write_videofile(
             output_path,
             codec="libx264",
@@ -67,6 +71,7 @@ def compress_video(input_path):
         )
     except Exception as e:
         print(f"❌ Error compressing video: {e}")
+        send_email_alert(f"Error compressing video {input_path}: {str(e)}")
         return None
 
     return output_path
@@ -74,19 +79,24 @@ def compress_video(input_path):
 
 def upload_to_discord(file_path):
     """Uploads the compressed file to Discord via webhook."""
-    with open(file_path, "rb") as f:
-        response = requests.post(DISCORD_WEBHOOK_URL, files={"file": f})
+    try:
+        with open(file_path, "rb") as f:
+            response = requests.post(DISCORD_WEBHOOK_URL, files={"file": f})
 
-    if response.status_code == 200:
-        print(f"✅ Uploaded {file_path} to Discord successfully!")
-    else:
-        print(f"❌ Failed to upload: {response.text}")
+        if response.status_code == 200:
+            print(f"✅ Uploaded {file_path} to Discord successfully!")
+        else:
+            print(f"❌ Failed to upload: {response.text}")
+            send_email_alert(f"Failed to upload {file_path} to Discord. Response: {response.text}")
+    except Exception as e:
+        print(f"❌ Error uploading to Discord: {e}")
+        send_email_alert(f"Error uploading {file_path} to Discord: {str(e)}")
 
 
-def send_email_alert(file_path):
-    """Send an email alert if the file is still too big after compression."""
-    subject = "🚨 Video Too Large to Upload 🚨"
-    body = f"The video '{file_path}' is still too large to upload (> 25MB). Please check it manually."
+def send_email_alert(message):
+    """Send an email alert with the given message."""
+    subject = "🚨 Video Processing Alert 🚨"
+    body = message
 
     msg = MIMEMultipart()
     msg["From"] = EMAIL_SENDER
