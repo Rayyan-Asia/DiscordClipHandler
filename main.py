@@ -1,7 +1,7 @@
 import os
 import time
 import smtplib
-import moviepy as mp
+from moviepy import VideoFileClip
 import requests
 from dotenv import load_dotenv
 from email.mime.multipart import MIMEMultipart
@@ -22,8 +22,9 @@ SMTP_SERVER = os.getenv("SMTP_SERVER", "smtp.gmail.com")
 SMTP_PORT = int(os.getenv("SMTP_PORT", 587))
 
 # 🔹 Maximum allowed file size for Discord (25MB)
-MAX_SIZE_MB = 25
+MAX_SIZE_MB = 10
 MAX_SIZE_BYTES = MAX_SIZE_MB * 1024 * 1024
+INITIAL_BITRATE = 1000  # Initial bitrate in kbps
 
 
 class VideoHandler(FileSystemEventHandler):
@@ -33,10 +34,19 @@ class VideoHandler(FileSystemEventHandler):
         if event.is_directory:
             return  # Ignore directories
 
+        if "compressed" in event.src_path:
+            return
+
+        time.sleep(30) # make sure the clip was saved completely
         file_path = event.src_path
         if file_path.endswith((".mp4", ".mov", ".avi")):
             print(f"📂 New video detected: {file_path}")
             try:
+
+                if os.path.getsize(file_path) <= MAX_SIZE_BYTES:
+                    upload_to_discord(file_path)
+                    return
+
                 compressed_path = compress_video(file_path)
 
                 if compressed_path:
@@ -53,29 +63,51 @@ class VideoHandler(FileSystemEventHandler):
 
 
 def compress_video(input_path):
-    """Compress video to fit under 25MB."""
-    output_path = os.path.join(CLIPS_FOLDER, f"compressed_{os.path.basename(input_path)}")
+    """Compress video iteratively to fit under 25MB using MoviePy."""
+    input_path = os.path.abspath(input_path)
+    output_path = os.path.join(os.path.dirname(input_path), "compressed_" + os.path.basename(input_path))
 
     try:
-        clip = mp.VideoFileClip(input_path)
+        # Load the video
+        clip = VideoFileClip(input_path)
 
-        # 🔹 Lower bitrate for higher compression
-        target_bitrate = "400k"  # Lower = smaller file size
+        # Start with an initial resolution and bitrate
+        new_width = clip.w // 2
+        new_height = clip.h // 2
+        bitrate = INITIAL_BITRATE
 
-        clip.write_videofile(
-            output_path,
-            codec="libx264",
-            preset="ultrafast",  # Fast encoding
-            bitrate=target_bitrate,
-            audio_codec="aac"
-        )
+        while True:
+            # Resize video
+            clip_resized = clip.resized((new_width, new_height))
+
+            # Save with reduced bitrate
+            clip_resized.write_videofile(output_path, codec="libx264", bitrate=f"{bitrate}k", audio_codec="aac")
+
+            # Check file size
+            file_size = os.path.getsize(output_path)
+            if file_size <= MAX_SIZE_BYTES:
+                print(f"✅ Compression successful: {output_path} ({file_size / (1024 * 1024):.2f} MB)")
+                clip.close()
+                clip_resized.close()
+                return output_path
+
+            print(f"🚨 File still too big ({file_size / (1024 * 1024):.2f} MB), reducing quality further...")
+
+            # Reduce bitrate and resolution for next iteration
+            bitrate = int(bitrate * 0.85)  # Reduce bitrate by 15%
+            new_width = max(new_width * 0.9, 320)  # Reduce width but not below 320px
+            new_height = max(new_height * 0.9, 180)  # Reduce height but not below 180px
+
+            # If bitrate goes too low, break to avoid extreme quality loss
+            if bitrate < 200:
+                print("⚠️ Unable to compress further without severe quality loss.")
+                clip.close()
+                clip_resized.close()
+                return None
+
     except Exception as e:
         print(f"❌ Error compressing video: {e}")
-        send_email_alert(f"Error compressing video {input_path}: {str(e)}")
         return None
-
-    return output_path
-
 
 def upload_to_discord(file_path):
     """Uploads the compressed file to Discord via webhook."""
@@ -85,12 +117,17 @@ def upload_to_discord(file_path):
 
         if response.status_code == 200:
             print(f"✅ Uploaded {file_path} to Discord successfully!")
+            # Delete all files in the directory with names containing "compressed"
         else:
             print(f"❌ Failed to upload: {response.text}")
             send_email_alert(f"Failed to upload {file_path} to Discord. Response: {response.text}")
     except Exception as e:
         print(f"❌ Error uploading to Discord: {e}")
         send_email_alert(f"Error uploading {file_path} to Discord: {str(e)}")
+
+    for file in os.listdir(os.path.dirname(file_path)):
+        if "compressed" in file:
+            os.remove(os.path.join(os.path.dirname(file_path), file))
 
 
 def send_email_alert(message):
