@@ -1,7 +1,7 @@
 import os
 import time
 import smtplib
-from moviepy import VideoFileClip
+import subprocess
 import requests
 from dotenv import load_dotenv
 from email.mime.multipart import MIMEMultipart
@@ -36,8 +36,9 @@ class VideoHandler(FileSystemEventHandler):
 
         if "compressed" in event.src_path:
             return
+        print(f"Waiting for video to save successfully")
 
-        time.sleep(30) # make sure the clip was saved completely
+        time.sleep(15) # make sure the clip was saved completely
         file_path = event.src_path
         if file_path.endswith((".mp4", ".mov", ".avi")):
             print(f"📂 New video detected: {file_path}")
@@ -63,51 +64,47 @@ class VideoHandler(FileSystemEventHandler):
 
 
 def compress_video(input_path):
-    """Compress video iteratively to fit under 25MB using MoviePy."""
+    """Compress video using NVIDIA GPU (NVENC) to fit under 25MB."""
     input_path = os.path.abspath(input_path)
     output_path = os.path.join(os.path.dirname(input_path), "compressed_" + os.path.basename(input_path))
 
-    try:
-        # Load the video
-        clip = VideoFileClip(input_path)
+    bitrate = 1000  # Start with 1000k bitrate
+    width = 1280  # Target width
+    height = 720   # Target height
 
-        # Start with an initial resolution and bitrate
-        new_width = clip.w // 2
-        new_height = clip.h // 2
-        bitrate = INITIAL_BITRATE
+    while True:
+        try:
+            # Run FFmpeg with NVENC for GPU-based compression
+            command = [
+                "ffmpeg", "-y", "-hwaccel", "cuda", "-i", input_path,
+                "-vf", f"scale={width}:{height}",
+                "-c:v", "h264_nvenc", "-b:v", f"{bitrate}k",
+                "-preset", "p5", "-c:a", "aac", "-b:a", "128k",
+                output_path
+            ]
 
-        while True:
-            # Resize video
-            clip_resized = clip.resized((new_width, new_height))
+            subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
 
-            # Save with reduced bitrate
-            clip_resized.write_videofile(output_path, codec="libx264", bitrate=f"{bitrate}k", audio_codec="aac")
-
-            # Check file size
+            # Check the file size
             file_size = os.path.getsize(output_path)
             if file_size <= MAX_SIZE_BYTES:
                 print(f"✅ Compression successful: {output_path} ({file_size / (1024 * 1024):.2f} MB)")
-                clip.close()
-                clip_resized.close()
                 return output_path
 
             print(f"🚨 File still too big ({file_size / (1024 * 1024):.2f} MB), reducing quality further...")
 
-            # Reduce bitrate and resolution for next iteration
-            bitrate = int(bitrate * 0.85)  # Reduce bitrate by 15%
-            new_width = max(new_width * 0.9, 320)  # Reduce width but not below 320px
-            new_height = max(new_height * 0.9, 180)  # Reduce height but not below 180px
+            # Reduce bitrate and resolution for next attempt
+            bitrate = int(bitrate * 0.85)
+            width = max(int(width * 0.9), 320)
+            height = max(int(height * 0.9), 180)
 
-            # If bitrate goes too low, break to avoid extreme quality loss
             if bitrate < 200:
                 print("⚠️ Unable to compress further without severe quality loss.")
-                clip.close()
-                clip_resized.close()
                 return None
 
-    except Exception as e:
-        print(f"❌ Error compressing video: {e}")
-        return None
+        except subprocess.CalledProcessError as e:
+            print(f"❌ FFmpeg error: {e.stderr.decode()}")
+            return None
 
 def upload_to_discord(file_path):
     """Uploads the compressed file to Discord via webhook."""
