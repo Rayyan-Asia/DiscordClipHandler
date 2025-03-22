@@ -14,7 +14,7 @@ load_dotenv()
 
 # 🔹 Load configurations from .env
 DISCORD_WEBHOOK_URL = os.getenv("DISCORD_WEBHOOK_URL")
-CLIPS_FOLDER = os.getenv("CLIPS_FOLDER")
+CLIPS_FOLDERS = os.getenv("CLIPS_FOLDERS").split(",")
 EMAIL_SENDER = os.getenv("EMAIL_SENDER")
 EMAIL_PASSWORD = os.getenv("EMAIL_PASSWORD")
 EMAIL_RECEIVER = os.getenv("EMAIL_RECEIVER")
@@ -133,6 +133,10 @@ def send_email_alert(message):
     body = message
 
     msg = MIMEMultipart()
+    if EMAIL_SENDER is None or EMAIL_RECEIVER is None:
+        print("❌ Email sender or receiver not configured. Cannot send email alert.")
+        return
+
     msg["From"] = EMAIL_SENDER
     msg["To"] = EMAIL_RECEIVER
     msg["Subject"] = subject
@@ -149,21 +153,28 @@ def send_email_alert(message):
         print(f"❌ Failed to send email: {e}")
 
 
-def start_monitoring():
-    """Starts monitoring the folder for new videos."""
-    event_handler = VideoHandler()
-    observer = Observer()
-    observer.schedule(event_handler, CLIPS_FOLDER, recursive=False)
-    observer.start()
-    print(f"🔍 Watching folder: {CLIPS_FOLDER} for new videos...")
+def start_monitoring(folders):
+    """Starts monitoring multiple folders for new videos."""
+    observers = []
+
+    for folder in folders:
+        event_handler = VideoHandler()
+        observer = Observer()
+        observer.schedule(event_handler, folder, recursive=False)
+        observer.start()
+        observers.append(observer)
+        print(f"🔍 Watching folder: {folder} for new videos...")
 
     try:
         while True:
             time.sleep(1)
     except KeyboardInterrupt:
-        observer.stop()
-    observer.join()
+        for observer in observers:
+            observer.stop()
+    for observer in observers:
+        observer.join()
+
 
 
 if __name__ == "__main__":
-    start_monitoring()
+    start_monitoring(CLIPS_FOLDERS)
