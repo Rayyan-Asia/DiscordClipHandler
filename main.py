@@ -6,7 +6,7 @@ import requests
 from dotenv import load_dotenv
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
-from watchdog.observers import Observer
+from watchdog.observers.polling import PollingObserver
 from watchdog.events import FileSystemEventHandler
 
 # Load environment variables from .env
@@ -158,8 +158,9 @@ def start_monitoring(folders):
     observers = []
 
     for folder in folders:
+        print(f"Setting up watcher for folder: {folder}")
         event_handler = VideoHandler()
-        observer = Observer()
+        observer = PollingObserver()
         observer.schedule(event_handler, folder, recursive=False)
         observer.start()
         observers.append(observer)
@@ -177,4 +178,5 @@ def start_monitoring(folders):
 
 
 if __name__ == "__main__":
+    print(f"🚀 Starting video monitoring service...{CLIPS_FOLDERS}")
     start_monitoring(CLIPS_FOLDERS)

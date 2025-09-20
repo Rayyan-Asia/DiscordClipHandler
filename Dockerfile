@@ -1,15 +1,15 @@
-# Use the official Python image
-FROM python:3.10-slim
+FROM nvidia/cuda:11.8.0-runtime-ubuntu22.04
 
-# Set the working directory in the container
+# Install Python and FFmpeg
+RUN apt-get update && apt-get install -y python3 python3-pip ffmpeg && \
+    ln -s /usr/bin/python3 /usr/bin/python && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# Set the working directory
 WORKDIR /app
 
-# Copy the project files into the container
+# Copy the project files
 COPY . /app
-
-# Install system dependencies for FFmpeg and CUDA
-RUN apt-get update && apt-get install -y ffmpeg && \
-    apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
@@ -18,4 +18,4 @@ RUN pip install --no-cache-dir -r requirements.txt
 EXPOSE 8000
 
 # Command to run the application
-CMD ["python", "main.py"]
+CMD ["python", "-u", "main.py"]
