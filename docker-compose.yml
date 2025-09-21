@@ -1,12 +1,13 @@
-version: "3.8"
 services:
   app:
     image: clip-monitor
+    runtime: nvidia
     build:
       context: .
       dockerfile: Dockerfile
     volumes:
       - .:/app
+      - "{{Your Parent Directory}}:/Videos"
     environment:
       - DISCORD_WEBHOOK_URL=${DISCORD_WEBHOOK_URL}
       - SMTP_SERVER=${SMTP_SERVER}
@@ -14,5 +15,6 @@ services:
       - EMAIL_SENDER=${EMAIL_SENDER}
       - EMAIL_PASSWORD=${EMAIL_PASSWORD}
       - EMAIL_RECEIVER=${EMAIL_RECEIVER}
-      - CLIPS_FOLDERS=${CLIPS_FOLDERS}
-    restart: unless-stopped
+      - CLIPS_FOLDERS=/Videos
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=all

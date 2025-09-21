@@ -161,7 +161,7 @@ def start_monitoring(folders):
         print(f"Setting up watcher for folder: {folder}")
         event_handler = VideoHandler()
         observer = PollingObserver()
-        observer.schedule(event_handler, folder, recursive=False)
+        observer.schedule(event_handler, folder, recursive=True)
         observer.start()
         observers.append(observer)
         print(f"🔍 Watching folder: {folder} for new videos...")
